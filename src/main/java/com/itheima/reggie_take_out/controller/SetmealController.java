@@ -13,10 +13,12 @@ import com.itheima.reggie_take_out.service.impl.SetmealImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author Denny
@@ -35,6 +37,8 @@ public class SetmealController
     private CategoryImpl categoryImpl;
     @Autowired
     private DishImpl dishImpl;
+    @Autowired
+    private RedisTemplate redisTemplate;
     @PostMapping
     public R<String> addSetmeal(@RequestBody SetmealDto setmealDto)
     {
@@ -43,6 +47,8 @@ public class SetmealController
         Setmeal setmeal = new Setmeal();
         BeanUtils.copyProperties(setmealDto,setmeal);
         setmealImpl.save(setmeal);
+        String key=setmeal.getCategoryId().toString()+"1";
+        redisTemplate.delete(key);
         //2、取出上述记录的id
         QueryWrapper<Setmeal> wrapper = new QueryWrapper<>();
         wrapper.eq("name",setmeal.getName());
@@ -53,6 +59,7 @@ public class SetmealController
         {
             setmealDish.setSetmealId(fullRecord.getId());
             setmealDishImpl.save(setmealDish);
+
 
         }
         return R.success("添加套餐成功");
@@ -105,7 +112,12 @@ public class SetmealController
             Setmeal setmeal = new Setmeal();
             setmeal.setId(l);
             setmeal.setIsDeleted(1);
+
+
             setmealImpl.updateById(setmeal);
+            Setmeal byId = setmealImpl.getById(l);
+            String key=byId.getCategoryId().toString()+"1";
+            redisTemplate.delete(key);
 
             //修改映射的setmealdish记录
             QueryWrapper<SetmealDish> wrapper = new QueryWrapper<>();
@@ -133,6 +145,9 @@ public class SetmealController
         {
             long l = Long.parseLong(s);
             setmealImpl.UpdateStatus(l,statusValue);
+            Setmeal byId = setmealImpl.getById(l);
+            String key=byId.getCategoryId().toString()+"1";
+            redisTemplate.delete(key);
 
 
         }
@@ -171,6 +186,9 @@ public class SetmealController
 
         setmealImpl.updateById(setmeal);
 
+        String key=setmeal.getCategoryId().toString()+"1";
+        redisTemplate.delete(key);
+
         //2.修改setmealdish
         Long id = setmeal.getId();
         QueryWrapper<SetmealDish> wrapper = new QueryWrapper<>();
@@ -189,7 +207,18 @@ public class SetmealController
     @GetMapping("/list")
     public R<List<SetmealDto>> ListSetmeal(Setmeal setmeal)//目前会传进来categoryid，status，name
     {
+        //先查询redis
+        String key=setmeal.getCategoryId().toString()+setmeal.getStatus().toString();
+        List<SetmealDto> redisOne = (List<SetmealDto>)redisTemplate.opsForValue().get(key);
+
+        if(redisOne!=null)
+        {
+            log.info("由redis显示");
+            return R.success(redisOne);
+
+        }
         QueryWrapper<Setmeal> wrapper = new QueryWrapper<>();
+        wrapper.eq("is_deleted",0);
         if (setmeal.getName() != null) {
 
             wrapper.like("name", setmeal.getName());
@@ -214,6 +243,7 @@ public class SetmealController
             setmealDtos.add(setmealDto);
 
         }
+        redisTemplate.opsForValue().set(key,setmealDtos,1, TimeUnit.HOURS);
         return R.success(setmealDtos);
     }
 

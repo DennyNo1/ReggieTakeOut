@@ -24,7 +24,7 @@ mybatis-plus:
     db-config:
       id-type: ASSIGN_ID
 reggie:
-  path: E:\Projects\src\main\resources\uploadImage\
+  path: E:\Projects\ReggieTakeOut\src\main\resources\uploadImage\
 #路径最后要加\
 AccessKeyID: LTAI5tK55PptnTyLhQtr32vu
 AccessKeySecret: K0pmF7kxVDExc9abbaqKa42aI9JI5A
