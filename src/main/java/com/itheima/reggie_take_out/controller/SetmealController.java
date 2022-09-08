@@ -13,6 +13,10 @@ import com.itheima.reggie_take_out.service.impl.SetmealImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,8 +31,11 @@ import java.util.concurrent.TimeUnit;
 @Slf4j//日志
 @RestController
 @RequestMapping("/setmeal")
+//这个控制类使用springcache缓存
 public class SetmealController
 {
+    @Autowired
+    private CacheManager cacheManager;
     @Autowired
     private SetmealImpl setmealImpl;
     @Autowired
@@ -40,6 +47,7 @@ public class SetmealController
     @Autowired
     private RedisTemplate redisTemplate;
     @PostMapping
+    @CacheEvict(value = "setmeal",allEntries = true)//无法精准定位record，只能整组删除
     public R<String> addSetmeal(@RequestBody SetmealDto setmealDto)
     {
         //1、将记录存入setmeal
@@ -47,8 +55,8 @@ public class SetmealController
         Setmeal setmeal = new Setmeal();
         BeanUtils.copyProperties(setmealDto,setmeal);
         setmealImpl.save(setmeal);
-        String key=setmeal.getCategoryId().toString()+"1";
-        redisTemplate.delete(key);
+/*        String key=setmeal.getCategoryId().toString()+"1";
+        redisTemplate.delete(key);*/
         //2、取出上述记录的id
         QueryWrapper<Setmeal> wrapper = new QueryWrapper<>();
         wrapper.eq("name",setmeal.getName());
@@ -65,6 +73,14 @@ public class SetmealController
         return R.success("添加套餐成功");
 
     }
+
+    /**
+     * 后台界面显示
+     * @param page
+     * @param pageSize
+     * @param name
+     * @return
+     */
     @GetMapping("/page")
     public R<Page<SetmealDto>> RefreshPage(int page,int pageSize,String name)
     {
@@ -100,6 +116,7 @@ public class SetmealController
 
     }
     @DeleteMapping
+    //这里多一个判断，未停售，无法删除。所以与缓存无关，因为停售也不会显示在客户界面。
     public R<String> deleteDish(@RequestParam(value = "ids") String ids )
     {
 
@@ -109,15 +126,19 @@ public class SetmealController
         )
         {
             long l = Long.parseLong(s);
+            Setmeal byId = setmealImpl.getById(l);
+            if(byId.getStatus()==1)
+                return R.error("该商品处于售卖状态，无法删除！");
+
             Setmeal setmeal = new Setmeal();
             setmeal.setId(l);
             setmeal.setIsDeleted(1);
 
 
             setmealImpl.updateById(setmeal);
-            Setmeal byId = setmealImpl.getById(l);
+           /*
             String key=byId.getCategoryId().toString()+"1";
-            redisTemplate.delete(key);
+            redisTemplate.delete(key);*/
 
             //修改映射的setmealdish记录
             QueryWrapper<SetmealDish> wrapper = new QueryWrapper<>();
@@ -134,6 +155,7 @@ public class SetmealController
 
         return R.success("删除成功");
     }
+    @CacheEvict(value = "setmeal",allEntries = true)//无法精准定位record，只能整组删除
     @PostMapping("/status/{statusValue}")
     public R<String> stopSellingDish(@RequestParam(value = "ids") String ids,@PathVariable Integer statusValue )
     {
@@ -145,15 +167,19 @@ public class SetmealController
         {
             long l = Long.parseLong(s);
             setmealImpl.UpdateStatus(l,statusValue);
+/*
             Setmeal byId = setmealImpl.getById(l);
             String key=byId.getCategoryId().toString()+"1";
             redisTemplate.delete(key);
+*/
 
 
         }
 
         return R.success("修改成功");
     }
+
+
     @GetMapping("/{id}")
     public R<SetmealDto> ListSetmeal(@PathVariable Long id)
     {
@@ -174,6 +200,7 @@ public class SetmealController
 
         return R.success(setmealDto);
     }
+    @CacheEvict(value = "setmeal",allEntries = true)//无法精准定位record，只能整组删除
     @PutMapping
     public R<String> UpdateSetmeal(@RequestBody SetmealDto setmealDto)
     {
@@ -186,8 +213,8 @@ public class SetmealController
 
         setmealImpl.updateById(setmeal);
 
-        String key=setmeal.getCategoryId().toString()+"1";
-        redisTemplate.delete(key);
+/*        String key=setmeal.getCategoryId().toString()+"1";
+        redisTemplate.delete(key);*/
 
         //2.修改setmealdish
         Long id = setmeal.getId();
@@ -204,11 +231,12 @@ public class SetmealController
         }
         return R.success("修改成功");
     }
+    @Cacheable(value = "setmeal",key = "#setmeal.categoryId+#setmeal.status")
     @GetMapping("/list")
     public R<List<SetmealDto>> ListSetmeal(Setmeal setmeal)//目前会传进来categoryid，status，name
     {
         //先查询redis
-        String key=setmeal.getCategoryId().toString()+setmeal.getStatus().toString();
+/*        String key=setmeal.getCategoryId().toString()+setmeal.getStatus().toString();
         List<SetmealDto> redisOne = (List<SetmealDto>)redisTemplate.opsForValue().get(key);
 
         if(redisOne!=null)
@@ -216,7 +244,7 @@ public class SetmealController
             log.info("由redis显示");
             return R.success(redisOne);
 
-        }
+        }*/
         QueryWrapper<Setmeal> wrapper = new QueryWrapper<>();
         wrapper.eq("is_deleted",0);
         if (setmeal.getName() != null) {
@@ -243,8 +271,9 @@ public class SetmealController
             setmealDtos.add(setmealDto);
 
         }
-        redisTemplate.opsForValue().set(key,setmealDtos,1, TimeUnit.HOURS);
+        /*redisTemplate.opsForValue().set(key,setmealDtos,1, TimeUnit.HOURS);*/
         return R.success(setmealDtos);
     }
+
 
 }

@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @RestController
 @RequestMapping("/dish")
+//这个类直接使用redis缓存
 public class DishController
 {
     @Autowired
